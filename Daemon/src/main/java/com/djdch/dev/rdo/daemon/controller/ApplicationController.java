@@ -66,6 +66,10 @@ public class ApplicationController {
                 }
             }
 
+            if (!running) {
+                return; // Already stopped, nothing to do.
+            }
+
             logger.info(String.format("Received `%s`", message));
         }
     }
