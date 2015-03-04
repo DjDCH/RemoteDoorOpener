@@ -4,7 +4,7 @@ public class RemoteDoorOpenerDaemon {
 
     // XXX: Set custom ShutdownRegistrationStrategy
     static {
-        System.setProperty("log4j.shutdownCallbackRegistry", "com.djdch.dev.rdo.daemon.log4j.StaticShutdownCallbackRegistry");
+        System.setProperty("log4j.shutdownCallbackRegistry", "com.djdch.log4j.StaticShutdownCallbackRegistry");
     }
 
     public static void main(String[] args) {

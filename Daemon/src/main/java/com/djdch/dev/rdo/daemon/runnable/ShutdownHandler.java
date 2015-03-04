@@ -4,7 +4,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.djdch.dev.rdo.daemon.controller.ApplicationController;
-import com.djdch.dev.rdo.daemon.log4j.StaticShutdownCallbackRegistry;
+import com.djdch.log4j.StaticShutdownCallbackRegistry;
 
 public class ShutdownHandler implements Runnable {
     private static final Logger logger = LogManager.getLogger();
