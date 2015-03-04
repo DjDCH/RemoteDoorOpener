@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" shutdownHook="disable">
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss,SSS} [%p] (%t) %l %m%n" />
+        </Console>
+        <Console name="AMQPConsole" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss,SSS} [%p] (%t) %l AMQP: %m%n" />
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="com.djdch.dev.rdo.amqp" level="TRACE" additivity="false">
+            <AppenderRef ref="AMQPConsole" />
+        </Logger>
+        <Root level="DEBUG">
+            <AppenderRef ref="Console" />
+        </Root>
+    </Loggers>
+</Configuration>
