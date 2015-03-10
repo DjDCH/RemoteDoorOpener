@@ -12,8 +12,10 @@ import org.apache.logging.log4j.Logger;
 import com.djdch.dev.rdo.amqp.Connection;
 import com.djdch.dev.rdo.amqp.Subscriber;
 import com.djdch.dev.rdo.daemon.ApplicationLauncher;
+import com.djdch.dev.rdo.daemon.exception.ApplicationException;
 import com.djdch.dev.rdo.daemon.runnable.RequestHandler;
 import com.djdch.dev.rdo.daemon.runnable.ShutdownHandler;
+import com.djdch.dev.rdo.data.packet.metadata.Client;
 import com.rabbitmq.client.ShutdownSignalException;
 
 public class ApplicationController {
@@ -26,6 +28,7 @@ public class ApplicationController {
     private final Connection connection;
     private final Subscriber subscriber;
 
+    private Client broker;
     private ExecutorService pool;
     private boolean running;
 
@@ -37,69 +40,74 @@ public class ApplicationController {
     }
 
     public void start() {
-        logger.debug("Starting RemoteDoorOpenerDaemon");
-        running = true;
-
-        Runtime.getRuntime().addShutdownHook(new Thread(new ShutdownHandler(this)));
-
         try {
-            logger.debug("Creating ThreadPool with {} threads", POOL_SIZE);
-            pool = Executors.newFixedThreadPool(POOL_SIZE);
-        } catch (IllegalArgumentException e) {
-            logger.fatal("Exception occurred while creating ThreadPool", e);
-            stop();
-        }
+            logger.debug("Starting RemoteDoorOpenerDaemon");
+            running = true;
 
-        connection.setHostname(launcher.getHostname());
+            broker = Client.createNamedClient(launcher.getRoutingKey());
 
-        try {
-            logger.debug("Starting Connection");
-            connection.connect();
-        } catch (IOException e) {
-            logger.fatal("Exception occurred while starting Connection", e);
-            stop();
-        }
-
-        subscriber.setExchange(launcher.getExchange());
-        subscriber.setRoutingKey(launcher.getRoutingKey());
-
-        try {
-            logger.debug("Starting Subscriber");
-            subscriber.start();
-        } catch (IOException e) {
-            logger.fatal("Exception occurred while starting Subscriber", e);
-            stop();
-        }
-
-        logger.info("RemoteDoorOpenerDaemon started");
-
-        while (running) {
-            String message = null;
+            Runtime.getRuntime().addShutdownHook(new Thread(new ShutdownHandler(this)));
 
             try {
-                logger.debug("Waiting for delivery");
-                message = subscriber.getDeliveryBody();
-            } catch (InterruptedException e) {
-                logger.fatal("Exception occurred while waiting for deliveries", e);
-                stop();
-            } catch (ShutdownSignalException e) {
-                if (running && connection.isConnected()) {
-                    logger.fatal("Shutdown signal received while waiting for deliveries", e);
-                    stop();
+                logger.debug("Creating ThreadPool with {} threads", POOL_SIZE);
+                pool = Executors.newFixedThreadPool(POOL_SIZE);
+            } catch (IllegalArgumentException e) {
+                throw new ApplicationException("Exception occurred while creating ThreadPool.", e);
+            }
+
+            connection.setHostname(launcher.getHostname());
+
+            try {
+                logger.debug("Starting Connection");
+                connection.connect();
+            } catch (IOException e) {
+                throw new ApplicationException("Exception occurred while starting Connection.", e);
+            }
+
+            subscriber.setExchange(launcher.getExchange());
+            subscriber.setRoutingKey(launcher.getRoutingKey());
+
+            try {
+                logger.debug("Starting Subscriber");
+                subscriber.start();
+            } catch (IOException e) {
+                throw new ApplicationException("Exception occurred while starting Subscriber.", e);
+            }
+
+            logger.info("RemoteDoorOpenerDaemon started");
+
+            while (running) {
+                String message = null;
+
+                try {
+                    logger.debug("Waiting for delivery");
+                    message = subscriber.getDeliveryBody();
+                } catch (InterruptedException e) {
+                    throw new ApplicationException("Exception occurred while waiting for deliveries.", e);
+                } catch (ShutdownSignalException e) {
+                    if (running && connection.isConnected()) {
+                        throw new ApplicationException("Shutdown signal received while waiting for deliveries.", e);
+                    }
+                }
+
+                if (!running) {
+                    return; // Already stopped, nothing to do.
+                }
+
+                try {
+                    logger.debug("New delivery received, sending message to RequestHandler");
+                    pool.submit(new RequestHandler(message, connection, broker));
+                } catch (RejectedExecutionException e) {
+                    throw new ApplicationException("Exception occurred while submitting message to RequestHandler.", e);
                 }
             }
-
-            if (!running) {
-                return; // Already stopped, nothing to do.
-            }
-
-            try {
-                logger.debug("New delivery received, sending message to RequestHandler");
-                pool.submit(new RequestHandler(message, connection));
-            } catch (RejectedExecutionException e) {
-                logger.fatal("Exception occurred while submitting message to RequestHandler", e);
-                stop();
-            }
+        } catch (ApplicationException e) {
+            logger.fatal("Exception occurred while running application", e);
+            stop();
+        } catch (Exception e) {
+            logger.fatal("Unexpected exception occurred while running application", e);
+            stop();
+            throw e;
         }
     }
 

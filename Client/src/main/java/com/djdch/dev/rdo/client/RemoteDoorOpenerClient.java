@@ -7,6 +7,13 @@ import com.djdch.dev.rdo.amqp.Connection;
 import com.djdch.dev.rdo.amqp.Consumer;
 import com.djdch.dev.rdo.amqp.Publisher;
 import com.djdch.dev.rdo.amqp.exception.PassiveDeclareException;
+import com.djdch.dev.rdo.data.Packet;
+import com.djdch.dev.rdo.data.packet.metadata.Client;
+import com.djdch.dev.rdo.data.packet.payload.Request;
+import com.djdch.dev.rdo.data.packet.payload.Response;
+import com.djdch.dev.rdo.data.packet.payload.request.Query;
+import com.djdch.dev.rdo.data.packet.payload.response.Reply;
+import com.google.gson.JsonSyntaxException;
 import com.rabbitmq.client.ShutdownSignalException;
 
 public class RemoteDoorOpenerClient {
@@ -18,6 +25,8 @@ public class RemoteDoorOpenerClient {
 
     public static void main(String[] args) {
         try {
+            Client client = Client.createRandomClient();
+
             final Connection connection = new Connection();
             final Publisher publisher = new Publisher(connection);
             final Consumer consumer = new Consumer(connection);
@@ -34,7 +43,32 @@ public class RemoteDoorOpenerClient {
                         logger.debug("Waiting for reply");
                         String message = consumer.getDeliveryBody();
 
-                        logger.info(String.format("Received `%s`", message));
+                        Packet requestPacket = Packet.decode(message);
+
+                        Request request = requestPacket.payload.request;
+                        Response response = requestPacket.payload.response;
+
+                        // TODO: Ensure that reply match sent request (add request parameter to runnable)
+
+                        switch (request.query) {
+                            case IS_CONNECTED:
+                                if (response.reply == Reply.OK) {
+                                    logger.info("Server is connected");
+                                }
+                                break;
+                            case DO_OPEN:
+                                if (response.reply == Reply.OK) {
+                                    logger.info("Door was opened");
+                                } else {
+                                    logger.info("Could not open the door");
+                                }
+                                break;
+                            default:
+                                logger.warn("Invalid request");
+                        }
+
+                    } catch (JsonSyntaxException e) {
+                        logger.error("Message contain invalid json, cannot parse reply", e);
                     } catch (InterruptedException e) {
                         logger.fatal("Exception occurred while waiting for delivery", e);
                     } catch (ShutdownSignalException e) {
@@ -63,11 +97,18 @@ public class RemoteDoorOpenerClient {
                 return;
             }
 
-            publisher.publish(consumer.getQueue());
+            Request request = new Request();
+            request.target = ROUTING_KEY;
+            request.query = Query.IS_CONNECTED;
+            request.returnQueue = consumer.getQueue();
+
+            Packet requestPacket = Packet.createRequestPacket(client, request);
+
+            publisher.publish(requestPacket.encode());
 
             Thread.sleep(1000);
 
-            publisher.throwChannelException();
+            publisher.throwChannelException(); // FIXME: For debugging only
 
             Thread.sleep(1000);
 
