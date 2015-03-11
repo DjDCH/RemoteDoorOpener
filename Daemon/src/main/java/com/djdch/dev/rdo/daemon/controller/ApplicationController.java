@@ -15,8 +15,12 @@ import com.djdch.dev.rdo.daemon.ApplicationLauncher;
 import com.djdch.dev.rdo.daemon.exception.ApplicationException;
 import com.djdch.dev.rdo.daemon.runnable.RequestHandler;
 import com.djdch.dev.rdo.daemon.runnable.ShutdownHandler;
+import com.djdch.dev.rdo.daemon.serial.Serial;
+import com.djdch.dev.rdo.daemon.serial.SerialLink;
 import com.djdch.dev.rdo.data.packet.metadata.Client;
 import com.rabbitmq.client.ShutdownSignalException;
+
+import jssc.SerialPortException;
 
 public class ApplicationController {
     private static final Logger logger = LogManager.getLogger();
@@ -25,6 +29,7 @@ public class ApplicationController {
     private static final int POOL_TIMEOUT = 30;
 
     private final ApplicationLauncher launcher;
+    private final SerialLink serial;
     private final Connection connection;
     private final Subscriber subscriber;
 
@@ -35,6 +40,7 @@ public class ApplicationController {
     public ApplicationController(ApplicationLauncher launcher) {
         this.launcher = launcher;
 
+        serial = new SerialLink();
         connection = new Connection();
         subscriber = new Subscriber(connection);
     }
@@ -74,6 +80,18 @@ public class ApplicationController {
                 throw new ApplicationException("Exception occurred while starting Subscriber.", e);
             }
 
+            if (launcher.getSerial() != null) {
+                try {
+                    logger.debug("Connecting SerialLink");
+                    serial.setPortName(launcher.getSerial());
+                    serial.connect();
+                    serial.write(Serial.CLOSE_FLAG);
+                    serial.flush();
+                } catch (SerialPortException e) {
+                    throw new ApplicationException("Exception occurred while connecting SerialLink.", e);
+                }
+            }
+
             logger.info("RemoteDoorOpenerDaemon started");
 
             while (running) {
@@ -96,7 +114,7 @@ public class ApplicationController {
 
                 try {
                     logger.debug("New delivery received, sending message to RequestHandler");
-                    pool.submit(new RequestHandler(message, connection, broker));
+                    pool.submit(new RequestHandler(message, serial, connection, broker));
                 } catch (RejectedExecutionException e) {
                     throw new ApplicationException("Exception occurred while submitting message to RequestHandler.", e);
                 }
@@ -118,6 +136,17 @@ public class ApplicationController {
 
         logger.debug("Stopping RemoteDoorOpenerDaemon");
         running = false;
+
+        if (serial.isConnected()) {
+            try {
+                logger.debug("Disconnecting SerialLink");
+                serial.write(Serial.VOID_FLAG);
+                serial.flush();
+                serial.disconnect();
+            } catch (SerialPortException e) {
+                logger.fatal("Exception occurred while disconnecting SerialLink", e);
+            }
+        }
 
         try {
             logger.debug("Stopping Subscriber");

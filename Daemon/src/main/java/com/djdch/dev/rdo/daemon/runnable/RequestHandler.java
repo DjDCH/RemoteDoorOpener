@@ -9,6 +9,8 @@ import com.djdch.dev.rdo.amqp.Connection;
 import com.djdch.dev.rdo.amqp.Producer;
 import com.djdch.dev.rdo.amqp.exception.PassiveDeclareException;
 import com.djdch.dev.rdo.daemon.exception.InvalidRequestException;
+import com.djdch.dev.rdo.daemon.serial.Serial;
+import com.djdch.dev.rdo.daemon.serial.SerialLink;
 import com.djdch.dev.rdo.data.Packet;
 import com.djdch.dev.rdo.data.packet.metadata.Client;
 import com.djdch.dev.rdo.data.packet.payload.Request;
@@ -16,15 +18,19 @@ import com.djdch.dev.rdo.data.packet.payload.Response;
 import com.djdch.dev.rdo.data.packet.payload.response.Reply;
 import com.google.gson.JsonSyntaxException;
 
+import jssc.SerialPortException;
+
 public class RequestHandler implements Runnable {
     private static final Logger logger = LogManager.getLogger();
 
     private final String message;
+    private final SerialLink serial;
     private final Connection connection;
     private final Client broker;
 
-    public RequestHandler(String message, Connection connection, Client broker) {
+    public RequestHandler(String message, SerialLink serial, Connection connection, Client broker) {
         this.message = message;
+        this.serial = serial;
         this.connection = connection;
         this.broker = broker;
     }
@@ -70,6 +76,17 @@ public class RequestHandler implements Runnable {
                     response.reply = Reply.OK;
                     break;
                 case DO_OPEN:
+                    if (serial.isConnected()) {
+                        try {
+                            logger.debug("Writing door opening sequence on SerialLink");
+                            serial.write(Serial.OPEN_FLAG);
+                            serial.flush();
+                            response.reply = Reply.OK;
+                            break;
+                        } catch (SerialPortException e) {
+                            logger.error("Exception occurred while writing on SerialLink", e);
+                        }
+                    }
                     response.reply = Reply.ERROR;
                     break;
                 default:

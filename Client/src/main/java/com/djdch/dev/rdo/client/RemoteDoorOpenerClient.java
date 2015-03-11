@@ -99,7 +99,7 @@ public class RemoteDoorOpenerClient {
 
             Request request = new Request();
             request.target = ROUTING_KEY;
-            request.query = Query.IS_CONNECTED;
+            request.query = Query.DO_OPEN;
             request.returnQueue = consumer.getQueue();
 
             Packet requestPacket = Packet.createRequestPacket(client, request);
