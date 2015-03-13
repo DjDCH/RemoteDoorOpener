@@ -4,13 +4,5 @@ jdk:
     - oraclejdk7
     - oraclejdk8
 
-before_install:
-    - DIRECTORY=$(pwd)
-    - cd ../..
-    - git clone --depth=50 --branch=v1.0.0 git://github.com/DjDCH/Log4j-StaticShutdown.git DjDCH/Log4j-StaticShutdown
-    - cd DjDCH/Log4j-StaticShutdown
-    - mvn clean install
-    - cd $DIRECTORY
-
 script:
     - mvn clean install
